@@ -1,0 +1,8 @@
+# Batch launchers must stay CRLF for cmd.exe.
+*.bat text eol=crlf
+
+# Source files use LF.
+*.py text
+*.md text
+*.json text
+*.txt text

@@ -1,0 +1,8 @@
+# RAW LEAKS - Automation Toolkit
+# One Discord user token per line. Lines starting with # are ignored.
+#
+# Optional label after a # is used in the logs:
+#   #   <paste-token-here>  # main
+#
+# Copy this file to tokens.txt and add your accounts.
+

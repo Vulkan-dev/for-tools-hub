@@ -1,0 +1,9 @@
+{
+  "invite": "",
+  "stagger_ms": 10,
+  "ready_timeout_seconds": 60,
+  "tokens_file": "tokens.txt",
+  "captcha_url": "https://discord.com/channels/@me",
+  "nopecha_key": "",
+  "nopecha_url": "https://api.nopecha.com"
+}

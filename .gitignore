@@ -1,0 +1,18 @@
+# RAW LEAKS - Automation Toolkit
+
+# Secrets - never commit real accounts or API keys.
+tokens.txt
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
