@@ -1,8 +1,14 @@
 # RAW LEAKS - Automation Toolkit
 # One Discord user token per line. Lines starting with # are ignored.
 #
-# Optional label after a # is used in the logs:
-#   #   <paste-token-here>  # main
-#
 # Copy this file to tokens.txt and add your accounts.
-
+#
+# Optional label after a # is used in the logs:
+#   <paste-token-here>  # main
+#
+# Optional per-account proxy before the label, pipe-separated:
+#   <paste-token-here>  | http://user:pass@host:8080  # target
+#
+# Supported proxy schemes: http://, https://, socks4://, socks5://
+#
+# <paste-token-here>  # main

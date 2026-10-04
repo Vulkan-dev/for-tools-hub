@@ -1,12 +1,13 @@
 """Startup banner for RAW LEAKS.
 
 Renders the brand frame on terminals that support box drawing characters and
-falls back to an ASCII frame on hosts with limited Unicode support.
+falls back to an ASCII frame on hosts with limited Unicode support. The frame
+is the anchor for the whole layout: every rule below it is exactly as wide.
 """
 
 from __future__ import annotations
 
-from . import console
+from . import FULL_NAME, __version__, console
 
 WIDTH = 46
 
@@ -20,7 +21,7 @@ _EMPTY = " " * WIDTH
 
 
 def render() -> list[str]:
-    """Return the banner as a list of ready-to-print lines."""
+    """Return the banner frame as a list of ready-to-print lines."""
     g = _UNI if console.unicode_enabled() else _ASCII
     return [
         g["tl"] + g["h"] * WIDTH + g["tr"],
@@ -33,11 +34,19 @@ def render() -> list[str]:
 
 
 def print_banner() -> None:
-    """Print the branded startup banner."""
+    """Print the framed brand block, tagline and hairline rule."""
     top, empty, name, subtitle, _, bottom = render()
-    print(console.style(top, console.RED), flush=True)
-    print(console.style(empty, console.RED), flush=True)
+
+    print("", flush=True)
+    print(console.style(top, console.GRAY), flush=True)
+    print(console.style(empty, console.GRAY), flush=True)
     print(console.style(name, console.WHITE), flush=True)
-    print(console.style(subtitle, console.GRAY), flush=True)
-    print(console.style(empty, console.RED), flush=True)
-    print(console.style(bottom, console.RED), flush=True)
+    print(console.style(subtitle, console.RED), flush=True)
+    print(console.style(empty, console.GRAY), flush=True)
+    print(console.style(bottom, console.GRAY), flush=True)
+
+    name_out = console.style(f"  {FULL_NAME}", console.WHITE)
+    version_out = console.style(f"  v{__version__}", console.RED)
+    print(f"{name_out}{version_out}", flush=True)
+    print(console.style(console.rule_character() * console.RULE_WIDTH, console.GRAY),
+          flush=True)

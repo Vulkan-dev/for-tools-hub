@@ -1,9 +1,20 @@
 {
-  "invite": "",
-  "stagger_ms": 10,
+  "stagger_ms": 1500,
+  "stagger_jitter_ms": 1000,
   "ready_timeout_seconds": 60,
   "tokens_file": "tokens.txt",
   "captcha_url": "https://discord.com/channels/@me",
   "nopecha_key": "",
-  "nopecha_url": "https://api.nopecha.com"
+  "nopecha_url": "https://api.nopecha.com",
+  "safety": {
+    "enabled": true,
+    "login_stagger_ms": 1000,
+    "min_gap_seconds": 60,
+    "max_joins_per_account": 5,
+    "max_consecutive_failures": 3,
+    "cooldown_seconds": 120,
+    "max_ratelimit_timeout": 120,
+    "ratelimit_retries": 3,
+    "verify_invite": true
+  }
 }

@@ -1,18 +1,21 @@
 """Runtime configuration for RAW LEAKS - Automation Toolkit.
 
 Settings live in ``config.json`` next to ``main.py``. Environment variables
-override the file so CI and scripted runs stay possible:
+(``NOPECHA_KEY``, ``RAW_LEAKS_STAGGER_MS``, ``RAW_LEAKS_TOKENS_FILE``) override
+the file so scripted runs stay possible.
 
-``NOPECHA_KEY``, ``RAW_LEAKS_INVITE``, ``RAW_LEAKS_STAGGER_MS``,
-``RAW_LEAKS_TOKENS_FILE``.
+The invite link is never stored here - the toolkit always asks for it.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .safety import SafetyPolicy, STATE_FILE
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT / "config.json"
@@ -20,10 +23,10 @@ TOKENS_FILE = ROOT / "tokens.txt"
 TOKENS_TEMPLATE = ROOT / "tokens.example.txt"
 
 DEFAULTS: dict[str, Any] = {
-    # Invite link used when the prompt is left empty.
-    "invite": "",
-    # Milliseconds between each account's join request.
-    "stagger_ms": 10,
+    # Milliseconds of delay between two join requests (plus random jitter).
+    "stagger_ms": 1500,
+    # Extra random delay added to every stagger so intervals never repeat.
+    "stagger_jitter_ms": 1000,
     # How long to wait for Discord's READY event after login.
     "ready_timeout_seconds": 60,
     # Token list, one account per line.
@@ -33,9 +36,20 @@ DEFAULTS: dict[str, Any] = {
     # NopeCHA API key - used to solve join CAPTCHAs automatically.
     "nopecha_key": "",
     "nopecha_url": "https://api.nopecha.com",
+    # Rate limit / account protection (see raw_leaks.safety).
+    "safety": SafetyPolicy().__dict__,
 }
 
 _CONFIG: dict[str, Any] = dict(DEFAULTS)
+
+
+@dataclass(frozen=True)
+class Account:
+    """One line of ``tokens.txt``."""
+
+    token: str
+    label: str
+    proxy: str = ""
 
 
 def _as_int(value: Any, fallback: int) -> int:
@@ -45,11 +59,18 @@ def _as_int(value: Any, fallback: int) -> int:
         return fallback
 
 
+def _as_bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on") or fallback
+
+
 def load(path: Path | None = None) -> dict[str, Any]:
     """Load ``config.json`` over the defaults and apply environment overrides."""
     global _CONFIG
     config_path = Path(path) if path else CONFIG_FILE
-    merged = dict(DEFAULTS)
+    merged: dict[str, Any] = dict(DEFAULTS)
+    merged["safety"] = dict(DEFAULTS["safety"])
 
     if config_path.is_file():
         try:
@@ -61,12 +82,13 @@ def load(path: Path | None = None) -> dict[str, Any]:
             raw = {}
         if isinstance(raw, dict):
             for key in DEFAULTS:
-                if key in raw and raw[key] not in (None, ""):
+                if key not in raw or raw[key] in (None,):
+                    continue
+                if key == "safety" and isinstance(raw[key], dict):
+                    merged["safety"].update(raw[key])
+                elif raw[key] != "":
                     merged[key] = raw[key]
 
-    env_invite = os.getenv("RAW_LEAKS_INVITE", "").strip()
-    if env_invite:
-        merged["invite"] = env_invite
     env_stagger = os.getenv("RAW_LEAKS_STAGGER_MS", "").strip()
     if env_stagger:
         merged["stagger_ms"] = _as_int(env_stagger, DEFAULTS["stagger_ms"])
@@ -77,10 +99,14 @@ def load(path: Path | None = None) -> dict[str, Any]:
     if env_key:
         merged["nopecha_key"] = env_key
 
-    merged["stagger_ms"] = max(0, min(_as_int(merged["stagger_ms"], 10), 5000))
+    merged["stagger_ms"] = max(0, min(_as_int(merged["stagger_ms"], 1500), 60000))
+    merged["stagger_jitter_ms"] = max(
+        0, min(_as_int(merged["stagger_jitter_ms"], 1000), 60000)
+    )
     merged["ready_timeout_seconds"] = max(
         5, min(_as_int(merged["ready_timeout_seconds"], 60), 300)
     )
+    merged["safety"] = SafetyPolicy.from_dict(merged["safety"]).__dict__
 
     _CONFIG = merged
     return _CONFIG
@@ -94,6 +120,16 @@ def get(key: str, fallback: Any = None) -> Any:
 def snapshot() -> dict[str, Any]:
     """Return a copy of the active configuration."""
     return dict(_CONFIG)
+
+
+def policy() -> SafetyPolicy:
+    """Return the safety policy built from the loaded configuration."""
+    return SafetyPolicy.from_dict(_CONFIG.get("safety"))
+
+
+def state_path() -> Path:
+    """Where the daily join budget is persisted."""
+    return ROOT / STATE_FILE
 
 
 def tokens_path() -> Path:
@@ -110,17 +146,22 @@ def ensure_tokens_file(path: Path | None = None) -> Path:
     return target
 
 
-def load_tokens(path: Path | None = None) -> list[tuple[str, str]]:
-    """Return ``(token, label)`` pairs.
+def load_tokens(path: Path | None = None) -> list[Account]:
+    """Parse the token list.
 
-    The file format is one account per line::
+    Line format (order matters, both fields after the token are optional)::
 
         # comment lines are ignored
-        mfa.xxxxx                       # main
-        long-user-token                 # alt
+        mfa.xxxxx                                    # main
+        mfa.xxxxx|http://user:pass@host:8080          # proxied
+        long-user-token                              # alt
+
+    The optional proxy is applied to that account only. Labels default to the
+    line number so log output stays stable even when the join order is
+    randomised.
     """
     target = ensure_tokens_file(path)
-    accounts: list[tuple[str, str]] = []
+    accounts: list[Account] = []
     if not target.is_file():
         return accounts
 
@@ -129,10 +170,16 @@ def load_tokens(path: Path | None = None) -> list[tuple[str, str]]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        token, sep, label = line.partition("#")
+        body, sep, label = line.partition("#")
+        token, pipe, proxy = body.partition("|")
         token = token.strip()
         if not token:
             continue
         label = label.strip() if sep else ""
-        accounts.append((token, label))
+        index = len(accounts) + 1
+        accounts.append(Account(
+            token=token,
+            label=label or f"#{index}",
+            proxy=proxy.strip() if pipe else "",
+        ))
     return accounts

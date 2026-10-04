@@ -4,6 +4,9 @@
 tokens.txt
 .env
 
+# Local run state (per-account daily join budget).
+state.json
+
 # Python
 __pycache__/
 *.py[cod]
